@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+mysql-connector-python
+passlib
+python-jose
+python-dotenv
+python-multipart
+PyJWT
+bcrypt==4.0.1
