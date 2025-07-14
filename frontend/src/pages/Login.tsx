@@ -34,7 +34,7 @@ const Login: React.FC<LoginProps> = ({ setIsAuthenticated }) => {
 
       if (response.ok) {
         const data = await response.json();
-        localStorage.setItem('token', data.access_token); // CORRECT
+        localStorage.setItem('access_token', data.access_token); // Stocke le token sous la bonne clé
         setIsAuthenticated(true);
         navigate('/dashboard');
       } else {

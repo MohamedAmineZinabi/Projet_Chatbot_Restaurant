@@ -7,3 +7,7 @@ python-dotenv
 python-multipart
 PyJWT
 bcrypt==4.0.1
+groq
+sentence_transformers
+faiss-cpu
+numpy
