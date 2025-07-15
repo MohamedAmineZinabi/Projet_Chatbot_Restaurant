@@ -3,14 +3,15 @@ from groq import Groq
 import json
 from sentence_transformers import SentenceTransformer
 import faiss
-from database import get_db  # import de la fonction get_db pour la connexion
+from database import get_db
 
 router = APIRouter()
 
 # Charger les plats
 with open("chatbot_snack.json", "r", encoding="utf-8") as f:
-    plats = json.load(f)
+    data = json.load(f)
 
+plats = data["plats"]
 documents = [json.dumps(p, ensure_ascii=False) for p in plats if p.get("disponible", True)]
 embedder = SentenceTransformer("all-MiniLM-L6-v2")
 doc_embeddings = embedder.encode(documents, convert_to_numpy=True)
@@ -33,7 +34,7 @@ async def chat_with_rag(request: Request):
         raise HTTPException(status_code=400, detail="conversation_id est requis")
 
     db = get_db()
-    cursor = db.cursor()
+    cursor = db.cursor(dictionary=True)
 
     # Enregistrer le message utilisateur
     cursor.execute(
@@ -42,21 +43,43 @@ async def chat_with_rag(request: Request):
     )
     db.commit()
 
-    # Embedding + recherche
+    # Recherche contextuelle
     q_embedding = embedder.encode([user_input], convert_to_numpy=True)
     _, indices = index.search(q_embedding, k=3)
     context = "\n\n".join([documents[i] for i in indices[0]])
 
-    prompt = f"""
-Tu es un assistant dans un snack. Réponds toujours en français.
-Utilise uniquement les informations suivantes :
+    # Récupérer l'historique de la conversation
+    cursor.execute(
+        "SELECT text, is_user FROM messages WHERE conversation_id = %s ORDER BY timestamp ASC",
+        (conversation_id,)
+    )
+    history_rows = cursor.fetchall()
 
+    # Construire l'historique formaté
+    history = ""
+    for row in history_rows:
+        if row["is_user"]:
+            history += f"Utilisateur : {row['text']}\n"
+        else:
+            history += f"Assistant : {row['text']}\n"
+
+    # Prompt amélioré avec historique
+    prompt = f"""
+Tu es un assistant virtuel qui aide les clients à passer commande dans un snack.
+
+Voici les plats disponibles :
 {context}
 
----
+Ta mission est de guider le client étape par étape, en posant une question à la fois, et en gardant le fil de la conversation.
+Lorsque tu demandes la table, pose la question ainsi : "À quelle table es-tu assis ?".
+Quand tous les éléments sont réunis (plat, viande, taille, légumes, sauces, table), résume la commande comme ceci :
+< Pour résumer votre commande : Plat : ... , Viande : ... , Taille : ... , Légumes : ... , Sauces : ... , Table : ... .> et propose la confirmation en disant au client de taper "je confirme".
 
-Client : {user_input}
-Chatbot :
+Ne parle jamais entre parenthèses. N'utilise jamais de remarque, de note interne, de commentaire ou d'explication entre parenthèses ou autrement. Adresse-toi uniquement au client, de façon naturelle et amicale, comme un serveur humain. Ne dis jamais 'Remarque :' ou toute autre note interne.
+
+Historique de la conversation :
+{history}
+Assistant :
 """
 
     completion = client.chat.completions.create(

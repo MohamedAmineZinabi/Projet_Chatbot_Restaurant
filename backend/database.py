@@ -34,7 +34,8 @@ def init_db():
             id INT AUTO_INCREMENT PRIMARY KEY,
             title VARCHAR(255),
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            user_email VARCHAR(255)
+            user_email VARCHAR(255),
+            status VARCHAR(20) DEFAULT 'en_cours'
         )
     """)
 

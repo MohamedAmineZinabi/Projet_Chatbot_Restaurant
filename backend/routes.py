@@ -1,6 +1,7 @@
 # backend/routes.py
-from fastapi import APIRouter, HTTPException, Depends, status, Body, File, UploadFile
+from fastapi import APIRouter, HTTPException, Depends, status, Body, File, UploadFile, Request
 from fastapi.security import OAuth2PasswordRequestForm
+from order_extractor import extract_order_info
 from database import get_db
 from groq import Groq
 import tempfile
@@ -96,7 +97,7 @@ def get_conversations(
     conversations = cursor.fetchall()
     cursor.close()
     db.close()
-    return conversations
+    return conversations  # status sera inclus
 
 @router.post("/api/messages")
 def add_message(msg: MessageCreate):
@@ -141,3 +142,90 @@ async def transcribe_audio(file: UploadFile = File(...)):
     except Exception as e:
         print("Erreur Whisper :", e)
         raise HTTPException(status_code=500, detail="Transcription failed")
+
+@router.post("/api/confirmer-commande")
+async def confirmer_commande(request: Request):
+    data = await request.json()
+    user_input = data.get("message", "")
+    conversation_id = data.get("conversation_id")
+
+    if not user_input.strip():
+        raise HTTPException(status_code=400, detail="Message vide.")
+    if not conversation_id:
+        raise HTTPException(status_code=400, detail="conversation_id manquant.")
+
+    # Si l'utilisateur tape "je confirme", on reconstitue la commande à partir de l'historique
+    if "je confirme" in user_input.lower() or "je valide" in user_input.lower():
+        db = get_db()
+        cursor = db.cursor(dictionary=True)
+        # On récupère le dernier message de l'assistant AVANT le message 'je confirme'
+        cursor.execute(
+            """
+            SELECT text FROM messages
+            WHERE conversation_id = %s AND is_user = FALSE AND id < (
+                SELECT id FROM messages
+                WHERE conversation_id = %s AND is_user = TRUE
+                ORDER BY id DESC LIMIT 1
+            )
+            ORDER BY id DESC LIMIT 1
+            """,
+            (conversation_id, conversation_id)
+        )
+        last_bot_msg = cursor.fetchone()
+        if last_bot_msg:
+            info = extract_order_info(last_bot_msg["text"])
+            print("Résumé analysé :", last_bot_msg["text"])
+            print("Infos extraites :", info)
+        else:
+            info = {}
+        cursor.close()
+        db.close()
+        confirmation = True
+    else:
+        info = extract_order_info(user_input)
+        confirmation = info["confirmation"]
+
+    if not confirmation:
+        return {"response": "Merci de confirmer votre commande en disant 'je confirme' ou 'je valide'."}
+
+    if not all([info["plat"], info["viande"], info["taille"], info["table"]]):
+        return {"response": "Commande incomplète. Veuillez préciser plat, viande, taille et numéro de table."}
+
+    legumes_str = ", ".join(info["legumes"]) if info["legumes"] else None
+    sauces_str = ", ".join(info["sauces"]) if info["sauces"] else None
+
+    db = get_db()
+    cursor = db.cursor()
+
+    try:
+        cursor.execute("""
+            INSERT INTO commandes (nom, type_viande, legumes, sauces, taille, table_numero, conversation_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (
+            info["plat"],
+            info["viande"],
+            legumes_str,
+            sauces_str,
+            info["taille"],
+            info["table"],
+            conversation_id
+        ))
+        response_text = f"Commande enregistrée avec succès : {info['plat']} au {info['viande']} avec {sauces_str or 'aucune sauce'} et {legumes_str or 'aucun légume'} (taille {info['taille']}), table {info['table']}."
+        # Mettre à jour le statut SEULEMENT si la commande est bien enregistrée
+        if "commande enregistrée" in response_text.lower() or "commande confirmée" in response_text.lower():
+            print("Avant UPDATE status, conversation_id =", conversation_id)
+            cursor.execute("UPDATE conversations SET status = %s WHERE id = %s", ("terminee", conversation_id))
+            print("UPDATE status for conversation", conversation_id)
+            cursor.execute("SELECT status FROM conversations WHERE id = %s", (conversation_id,))
+            print("Nouveau statut en base :", cursor.fetchone())
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Erreur en base de données : {str(e)}")
+    finally:
+        cursor.close()
+        db.close()
+
+    return {
+        "response": response_text
+    }

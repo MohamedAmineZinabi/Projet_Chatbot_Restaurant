@@ -1,4 +1,6 @@
-[
+{
+
+  "plats": [
     {
       "nom": "Tacos",
       "description": "Galette garnie au choix de viande, legumes, et sauces.",
@@ -6,8 +8,13 @@
       "types_viande": ["poulet", "viande hachee"],
       "legumes_possibles": ["tomate", "oignon", "carotte", "lettuce"],
       "sauces_possibles": ["mayonnaise", "ketchup", "algerienne", "biggy"],
-      "exclusions_acceptees": true,
-      "taille": ["petit", "moyen", "grand"]
+      "taille": ["petit", "moyen", "grand"],
+      "tables_disponibles": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      "prix_MAD": {
+        "petit": 25,
+        "moyen": 35,
+        "grand": 45
+      }
     },
     {
       "nom": "Sandwich",
@@ -16,8 +23,11 @@
       "types_viande": ["thon", "poulet", "viande hachee"],
       "legumes_possibles": ["tomate", "oignon", "carotte", "lettuce"],
       "sauces_possibles": ["ketchup", "mayonnaise"],
-      "exclusions_acceptees": true,
-      "taille": ["normal"]
+      "taille": ["petit", "moyen", "grand"],
+      "tables_disponibles": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      "prix_MAD": {
+        "normal": 20
+      }
     }
   ]
-  
+}
