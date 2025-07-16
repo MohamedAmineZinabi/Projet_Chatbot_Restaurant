@@ -18,7 +18,7 @@ interface Conversation {
   title: string;
   lastMessage: string;
   timestamp: Date;
-  status?: string; // <-- Ajout
+  status?: string;
 }
 
 const Client = () => {

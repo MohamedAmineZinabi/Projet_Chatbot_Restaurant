@@ -11,3 +11,4 @@ groq
 sentence_transformers
 faiss-cpu
 numpy
+uvicorn[standard]

@@ -1,5 +1,5 @@
 # backend/routes.py
-from fastapi import APIRouter, HTTPException, Depends, status, Body, File, UploadFile, Request
+from fastapi import APIRouter, HTTPException, Depends, status, Body, File, UploadFile, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.security import OAuth2PasswordRequestForm
 from order_extractor import extract_order_info
 from database import get_db
@@ -14,8 +14,28 @@ from auth import (
 )
 from typing import List
 from datetime import timedelta
+import asyncio
 
 router = APIRouter()
+
+chef_connections = []
+
+@router.websocket("/ws/commandes")
+async def websocket_commandes(websocket: WebSocket):
+    await websocket.accept()
+    chef_connections.append(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        chef_connections.remove(websocket)
+
+async def notify_chefs_new_commande(commande):
+    for ws in chef_connections:
+        try:
+            await ws.send_json({"type": "new_commande", "commande": commande})
+        except Exception:
+            pass
 
 @router.post("/api/signup", status_code=status.HTTP_201_CREATED)
 async def signup(form: SignupForm = Body(...)):
@@ -144,7 +164,10 @@ async def transcribe_audio(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail="Transcription failed")
 
 @router.post("/api/confirmer-commande")
-async def confirmer_commande(request: Request):
+async def confirmer_commande(
+    request: Request,
+    current_user: User = Depends(get_current_active_user)
+):
     data = await request.json()
     user_input = data.get("message", "")
     conversation_id = data.get("conversation_id")
@@ -199,8 +222,8 @@ async def confirmer_commande(request: Request):
 
     try:
         cursor.execute("""
-            INSERT INTO commandes (nom, type_viande, legumes, sauces, taille, table_numero, conversation_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO commandes (nom, type_viande, legumes, sauces, taille, table_numero, conversation_id, user_email)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """, (
             info["plat"],
             info["viande"],
@@ -208,8 +231,21 @@ async def confirmer_commande(request: Request):
             sauces_str,
             info["taille"],
             info["table"],
-            conversation_id
+            conversation_id,
+            current_user.email
         ))
+        commande_data = {
+            "id": cursor.lastrowid,
+            "nom": info["plat"],
+            "type_viande": info["viande"],
+            "legumes": legumes_str,
+            "sauces": sauces_str,
+            "taille": info["taille"],
+            "table_numero": info["table"],
+            "conversation_id": conversation_id,
+            "user_email": current_user.email
+        }
+        asyncio.create_task(notify_chefs_new_commande(commande_data))
         response_text = f"Commande enregistrée avec succès : {info['plat']} au {info['viande']} avec {sauces_str or 'aucune sauce'} et {legumes_str or 'aucun légume'} (taille {info['taille']}), table {info['table']}."
         # Mettre à jour le statut SEULEMENT si la commande est bien enregistrée
         if "commande enregistrée" in response_text.lower() or "commande confirmée" in response_text.lower():
@@ -229,3 +265,28 @@ async def confirmer_commande(request: Request):
     return {
         "response": response_text
     }
+
+@router.get("/api/commandes")
+def get_commandes(current_user: User = Depends(get_current_active_user)):
+    db = get_db()
+    cursor = db.cursor(dictionary=True)
+    cursor.execute("""
+        SELECT id, nom, type_viande, legumes, sauces, taille, table_numero, user_email
+        FROM commandes
+        WHERE user_email = %s
+        ORDER BY id ASC
+    """, (current_user.email,))
+    commandes = cursor.fetchall()
+    cursor.close()
+    db.close()
+    return commandes
+
+@router.delete("/api/commandes/{commande_id}")
+def delete_commande(commande_id: int):
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("DELETE FROM commandes WHERE id = %s", (commande_id,))
+    db.commit()
+    cursor.close()
+    db.close()
+    return Response(status_code=204)
