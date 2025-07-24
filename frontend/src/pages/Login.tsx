@@ -5,6 +5,7 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Card, CardContent, CardHeader } from "../components/ui/card";
+import { API_URL } from '../config';
 
 interface LoginProps {
   setIsAuthenticated: (value: boolean) => void;
@@ -24,7 +25,7 @@ const Login: React.FC<LoginProps> = ({ setIsAuthenticated }) => {
       formData.append('username', email); // OAuth2PasswordRequestForm attend "username"
       formData.append('password', password);
 
-      const response = await fetch('http://localhost:8000/api/login', {
+      const response = await fetch(`${API_URL}/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded', // CORRECT

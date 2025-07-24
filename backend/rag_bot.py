@@ -20,7 +20,7 @@ dim = doc_embeddings.shape[1]
 index = faiss.IndexFlatL2(dim)
 index.add(doc_embeddings)
 
-client = Groq(api_key="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")
+client = Groq(api_key="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")
 
 @router.post("/api/chat-rag")
 async def chat_with_rag(request: Request):
@@ -71,11 +71,11 @@ Voici les plats disponibles :
 {context}
 
 Ta mission est de guider le client étape par étape, en posant une question à la fois, et en gardant le fil de la conversation.
-Lorsque tu demandes la table, pose la question ainsi : "À quelle table es-tu assis ?".
+Lorsque tu demandes la table, pose la question ainsi : "À quelle table etes-vous assis ?".
 Quand tous les éléments sont réunis (plat, viande, taille, légumes, sauces, table), résume la commande comme ceci :
 < Pour résumer votre commande : Plat : ... , Viande : ... , Taille : ... , Légumes : ... , Sauces : ... , Table : ... .> et propose la confirmation en disant au client de taper "je confirme".
 
-Ne parle jamais entre parenthèses. N'utilise jamais de remarque, de note interne, de commentaire ou d'explication entre parenthèses ou autrement. Adresse-toi uniquement au client, de façon naturelle et amicale, comme un serveur humain. Ne dis jamais 'Remarque :' ou toute autre note interne.
+Ne parle jamais entre parenthèses. N'utilise jamais de remarque, de note interne, de commentaire ou d'explication entre parenthèses ou autrement. Adresse-toi uniquement au client, de façon naturelle et amicale, comme un serveur humain. Ne dis jamais 'Remarque :, Utilisateur : ou Assistant :' ou toute autre note interne.
 
 Historique de la conversation :
 {history}

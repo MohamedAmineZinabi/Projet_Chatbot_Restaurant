@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { ChefHat, Clock, Check, Utensils, Users, Bell } from "lucide-react";
+import { API_URL, WS_URL } from '../config';
 
 interface Commande {
   id: number;
@@ -15,7 +16,7 @@ interface Commande {
   created_at: string;
 }
 
-const notificationSoundUrl = "/ReelAudio-38527.mp3"; // Place ce fichier dans public/
+const notificationSoundUrl = "/classic one second timer.mp3"; // Place ce fichier dans public/
 
 const Chef = () => {
   const [commandes, setCommandes] = useState<Commande[]>([]);
@@ -34,7 +35,7 @@ const Chef = () => {
   useEffect(() => {
     fetchCommandes();
     setLoading(false);
-    ws.current = new WebSocket("ws://localhost:8000/ws/commandes");
+    ws.current = new WebSocket(WS_URL);
     ws.current.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === "new_commande") {
@@ -54,7 +55,7 @@ const Chef = () => {
 
   const fetchCommandes = async () => {
     try {
-      const res = await fetch("http://localhost:8000/api/commandes", {
+      const res = await fetch(`${API_URL}/commandes`, {
         headers: authHeaders,
       });
       if (res.ok) {
@@ -72,7 +73,7 @@ const Chef = () => {
     setProcessingIds(prev => new Set(prev).add(commandeId));
 
     try {
-      const res = await fetch(`http://localhost:8000/api/commandes/${commandeId}`, {
+      const res = await fetch(`${API_URL}/commandes/${commandeId}`, {
         method: "DELETE",
         headers: authHeaders,
       });

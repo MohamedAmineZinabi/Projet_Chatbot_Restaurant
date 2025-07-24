@@ -152,7 +152,7 @@ async def transcribe_audio(file: UploadFile = File(...)):
             tmp.write(await file.read())
             tmp_path = tmp.name
 
-        client = Groq(api_key="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")
+        client = Groq(api_key="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")
         response = client.audio.transcriptions.create(
             model="whisper-large-v3",
             file=open(tmp_path, "rb"),

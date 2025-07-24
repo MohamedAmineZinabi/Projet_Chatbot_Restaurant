@@ -3,8 +3,24 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Card } from "../components/ui/card";
 import { ScrollArea } from "../components/ui/scroll-area";
-import { Send, ChefHat, Plus, MessageCircle, Clock, Mic, MicOff, PanelLeft } from "lucide-react";
-
+import {
+  Send,
+  ChefHat,
+  Plus,
+  MessageCircle,
+  Clock,
+  Mic,
+  MicOff,
+  PanelLeft,
+  HelpCircle,
+  X,
+  Lightbulb,
+  MessageSquare,
+  Volume2,
+} from "lucide-react";
+import { Link } from "react-router-dom";
+// No Capacitor plugin imports for microphone permissions needed here.
+// Relying solely on navigator.mediaDevices.getUserMedia and AndroidManifest.xml
 
 interface Message {
   id: number;
@@ -29,6 +45,7 @@ const Client = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
   const token = localStorage.getItem("access_token");
@@ -59,7 +76,7 @@ const Client = () => {
         title: c.title || "Nouvelle commande",
         lastMessage: c.last_message || "",
         timestamp: new Date(c.created_at),
-        status: c.status, // <-- Ajout
+        status: c.status,
       }));
       setConversations(convs);
       if (convs.length > 0 && currentConvId === null) {
@@ -157,7 +174,7 @@ const Client = () => {
 
       setMessages((prev) => [...prev, botMessage]);
 
-      // 🔁 Appel de confirmer-commande après chaque message
+      // Appel de confirmer-commande après chaque message
       const confirmRes = await fetch("http://localhost:8000/api/confirmer-commande", {
         method: "POST",
         headers: authHeaders,
@@ -169,17 +186,23 @@ const Client = () => {
 
       const confirmData = await confirmRes.json();
 
-      if (confirmData.response?.toLowerCase().includes("commande enregistrée") || confirmData.response?.toLowerCase().includes("commande confirmée")) {
-        setConversations(prev =>
-          prev.map(conv =>
+      if (
+        confirmData.response?.toLowerCase().includes("commande enregistrée") ||
+        confirmData.response?.toLowerCase().includes("commande confirmée")
+      ) {
+        setConversations((prev) =>
+          prev.map((conv) =>
             conv.id === currentConvId ? { ...conv, status: "terminee" } : conv
           )
         );
         console.log("Statut conversation mis à jour localement", currentConvId);
-        fetchConversations(); // <-- Rafraîchit la liste depuis la base
+        fetchConversations();
       }
 
-      if (confirmData.response?.toLowerCase().includes("commande enregistrée") || confirmData.response?.toLowerCase().includes("commande confirmée")) {
+      if (
+        confirmData.response?.toLowerCase().includes("commande enregistrée") ||
+        confirmData.response?.toLowerCase().includes("commande confirmée")
+      ) {
         const confirmMessage: Message = {
           id: botMessage.id + 1,
           text: confirmData.response,
@@ -214,12 +237,67 @@ const Client = () => {
     }
   };
 
+  // Corrected and enhanced Function for Microphone Permission
+  const checkAndRequestMicPermission = async (): Promise<boolean> => {
+    try {
+      // 1. Basic check for MediaDevices API support
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        console.warn("MediaDevices API or getUserMedia is not supported in this environment.");
+        alert("Votre appareil/navigateur ne supporte pas l'accès au microphone.");
+        return false;
+      }
+
+      // 2. Attempt to get a stream. This is the primary way to trigger permission prompt (if not granted)
+      // and test if access is truly possible.
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      // 3. If stream is successfully obtained, permission is granted and active.
+      // Immediately stop all tracks to release microphone resources.
+      stream.getTracks().forEach(track => track.stop());
+      console.log("Microphone access granted via getUserMedia.");
+      return true;
+
+    } catch (error: any) {
+      // 4. Handle errors from getUserMedia
+      console.error("Erreur lors de la demande d'accès au microphone (getUserMedia):", error);
+      // *** IMPORTANT: Log the full error object for detailed debugging ***
+      console.error("Détails de l'erreur getUserMedia:", JSON.stringify(error, Object.getOwnPropertyNames(error)));
+
+      if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError") {
+        // This is the specific error when permission is denied or blocked.
+        // The screenshot shows it's already "AUTORISÉ", so this indicates a deeper WebView issue.
+        alert("Permission microphone refusée. Veuillez l'activer manuellement dans les paramètres de votre appareil.");
+      } else if (error.name === "NotFoundError" || error.name === "DevicesNotFoundError") {
+        // No microphone hardware detected.
+        alert("Aucun microphone trouvé sur cet appareil.");
+      } else if (error.name === "AbortError") {
+        // User aborted, or some other internal error (e.g., device already in use by another app).
+        alert("Accès au microphone interrompu ou impossible. Il est peut-être déjà utilisé par une autre application.");
+      } else if (error.name === "SecurityError") {
+        // getUserMedia called from an insecure context (e.g., http instead of https for web, or unusual Capacitor config)
+        alert("Problème de sécurité: L'accès au microphone doit se faire via une connexion sécurisée.");
+      }
+      else {
+        // General or unknown error.
+        alert(`Impossible d'accéder au microphone: ${error.message || "Erreur inconnue."}`);
+      }
+      return false;
+    }
+  };
+
   const toggleRecording = async () => {
     if (isRecording && mediaRecorder) {
       mediaRecorder.stop();
       setIsRecording(false);
     } else {
+      const hasPermission = await checkAndRequestMicPermission();
+      if (!hasPermission) {
+        // The alert message is already handled inside checkAndRequestMicPermission.
+        return;
+      }
+
       try {
+        // Only proceed if permission was successfully obtained
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const recorder = new MediaRecorder(stream);
         let chunks: Blob[] = [];
@@ -231,6 +309,9 @@ const Client = () => {
           const formData = new FormData();
           formData.append("file", audioBlob, "recording.webm");
 
+          // Stop the stream tracks after recording is done to release resources
+          stream.getTracks().forEach(track => track.stop());
+
           try {
             const res = await fetch("http://localhost:8000/api/transcribe", {
               method: "POST",
@@ -240,14 +321,18 @@ const Client = () => {
             if (data.text) setInputMessage(data.text);
           } catch (err) {
             console.error("Erreur transcription :", err);
+            alert("Erreur lors de la transcription audio. Veuillez réessayer.");
           }
         };
 
         recorder.start();
         setMediaRecorder(recorder);
         setIsRecording(true);
-      } catch (err) {
-        console.error("Erreur micro :", err);
+      } catch (err: any) {
+        // This catch block will specifically handle errors during the *actual recording start*
+        // after checkAndRequestMicPermission has seemingly passed.
+        alert(`Erreur d'accès au microphone lors de l'enregistrement: ${err.message || err}.`);
+        console.error("Erreur micro lors du démarrage de l'enregistrement :", err);
       }
     }
   };
@@ -269,14 +354,17 @@ const Client = () => {
     setIsSidebarOpen(!isSidebarOpen);
   };
 
-  const currentConversation = conversations.find(c => c.id === currentConvId);
-  const isCommandeConfirmee = currentConversation?.status === 'terminee';
-  console.log("isCommandeConfirmee", isCommandeConfirmee, currentConversation);
+  const currentConversation = conversations.find((c) => c.id === currentConvId);
+  const isCommandeConfirmee = currentConversation?.status === "terminee";
 
   return (
     <div className="h-screen bg-background flex">
       {/* Sidebar */}
-      <div className={`${isSidebarOpen ? 'w-80' : 'w-0'} bg-card border-r border-border flex flex-col h-full transition-all duration-300 ease-in-out overflow-hidden`}>
+      <div
+        className={`${
+          isSidebarOpen ? "w-80" : "w-0"
+        } bg-card border-r border-border flex flex-col h-full transition-all duration-300 ease-in-out overflow-hidden`}
+      >
         <div className="p-4 border-b border-border">
           <Button
             onClick={handleNewConversation}
@@ -315,10 +403,13 @@ const Client = () => {
           </div>
         </ScrollArea>
         <div className="p-4 border-t border-border">
+          <Link to="/mode-selection" className="text-sm text-muted-foreground hover:text-snack-orange">
+            ← Changer de mode
+          </Link>
         </div>
       </div>
 
-      {/* Zone de chat */}
+      {/* Chat Area */}
       <div className="flex-1 flex flex-col h-full">
         <header className="bg-card border-b border-border p-4">
           <div className="flex items-center gap-3">
@@ -333,10 +424,18 @@ const Client = () => {
             <div className="bg-gradient-to-r from-snack-red to-snack-orange p-2 rounded-full">
               <ChefHat className="w-5 h-5 text-white" />
             </div>
-            <div>
+            <div className="flex-1">
               <h1 className="font-semibold text-foreground">Assistant SnackZinabi</h1>
               <p className="text-sm text-muted-foreground">Votre assistant culinaire personnel</p>
             </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsHelpOpen(!isHelpOpen)}
+              className="h-8 w-8 hover:bg-accent/50"
+            >
+              <HelpCircle className="w-4 h-4" />
+            </Button>
           </div>
         </header>
 
@@ -412,6 +511,56 @@ const Client = () => {
             </Card>
           </div>
         </div>
+      </div>
+
+      {/* Help Sidebar on the right */}
+      <div
+        className={`${
+          isHelpOpen ? "w-80" : "w-0"
+        } bg-card border-l border-border flex flex-col h-full transition-all duration-300 ease-in-out overflow-hidden animate-slide-in-right`}
+      >
+        <div className="p-4 border-b border-border flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Lightbulb className="w-5 h-5 text-snack-orange" />
+            <h3 className="font-semibold text-foreground">Guide d'utilisation</h3>
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsHelpOpen(false)}
+            className="h-6 w-6 hover:bg-accent/50"
+          >
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
+
+        <ScrollArea className="flex-1 h-0">
+          <div className="p-4 space-y-6">
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-snack-red" />
+                <h4 className="font-medium text-foreground">Comment commander ?</h4>
+              </div>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p>• Décrivez simplement ce que vous voulez</p>
+                <p>• Exemple : "Je voudrais un sandwich au poulet"</p>
+                <p>• L'assistant vous guidera étape par étape</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Volume2 className="w-4 h-4 text-snack-orange" />
+                <h4 className="font-medium text-foreground">Commande vocale</h4>
+              </div>
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p>• Appuyez sur le micro pour enregistrer votre voix</p>
+                <p>• Parlez clairement votre commande</p>
+                <p>• Relâchez le micro pour envoyer la commande</p>
+              </div>
+            </div>
+          </div>
+        </ScrollArea>
       </div>
     </div>
   );

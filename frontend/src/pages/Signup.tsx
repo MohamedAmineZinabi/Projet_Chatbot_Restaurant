@@ -5,6 +5,7 @@ import { Label } from "../components/ui/label";
 import { Card, CardContent, CardHeader } from "../components/ui/card";
 import { ChefHat, Utensils, Cookie, User } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
+import { API_URL } from '../config';
 
 const Signup = () => {
   const [email, setEmail] = useState('');
@@ -17,7 +18,7 @@ const Signup = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const response = await fetch('http://localhost:8000/api/signup', {
+      const response = await fetch(`${API_URL}/signup`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
